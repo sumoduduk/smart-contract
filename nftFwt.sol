@@ -1,4 +1,5 @@
  // SPDX-License-Identifier: MIT
+ //Credit-To-Hashlips
 
 pragma solidity >=0.7.0 <0.9.0;
 
@@ -6,8 +7,9 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-contract NFT_FWT is ERC721, Ownable {
+contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
   using Strings for uint256;
   using Counters for Counters.Counter;
 
@@ -17,6 +19,7 @@ contract NFT_FWT is ERC721, Ownable {
   event RewardClaim (address claimer, uint256 rewardAmount, uint256 totalReward);
 
     struct NFT {
+      
         uint256 pendingReward;
         uint256 rewardReleased;
         uint256 timeIssued;
@@ -39,11 +42,11 @@ contract NFT_FWT is ERC721, Ownable {
   mapping(uint256 => NFT) nft;
   mapping(address => uint256) public TotalRewardReleasedPerAddress;
 
-//   address public txToken;
+  address public txToken;
 
-  constructor() ERC721("Final Waste Technology", "FWT") {
+  constructor(address _txToken) ERC721("Final Waste Technology", "FWT") {
     setHiddenMetadataUri("ipfs://__CID__/hidden.json");
-    // txToken = _txToken;
+    txToken = _txToken;
   }
 
   modifier mintCompliance(uint256 _mintAmount) {
@@ -52,27 +55,28 @@ contract NFT_FWT is ERC721, Ownable {
     _;
   }
 
+  modifier checkToken(uint256 _tokenId) {
+    require(_exists(_tokenId), "The NFT are not exist");
+    _;
+  }
+
   function totalSupply() public view returns (uint256) {
     return supply.current();
   }
 
-  function viewNftData(uint256 _tokenId) public view returns (uint256 reward, uint256 TotalRewardReleased, uint256 time) {
-    require(_exists(_tokenId), "The NFT are not exist");
+  function viewNftData(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256 reward, uint256 TotalRewardReleased, uint256 time) {
     return (nft[_tokenId].pendingReward, nft[_tokenId].rewardReleased, nft[_tokenId].timeIssued);
   }
 
   function mint(uint256 _mintAmount) public payable mintCompliance(_mintAmount) {
     require(!paused, "The contract is paused!");
-    // require(msg.value >= cost * _mintAmount, "Insufficient funds!");
+    require(msg.value >= cost * _mintAmount, "Insufficient funds!");
 
     _mintLoop(msg.sender, _mintAmount);
   }
-  
-  function mintForAddress(uint256 _mintAmount, address _receiver) public mintCompliance(_mintAmount) onlyOwner {
-    _mintLoop(_receiver, _mintAmount);
-  }
 
   function yourNftTotal() public view returns(uint256) {
+      require(balanceOf(msg.sender) > 0, "Don't have any NFT");
       return balanceOf(msg.sender);
   }
 
@@ -155,7 +159,6 @@ contract NFT_FWT is ERC721, Ownable {
 
     (bool os, ) = payable(owner()).call{value: address(this).balance}("");
     require(os);
-    // =============================================================================
   }
 
   function _mintLoop(address _receiver, uint256 _mintAmount) internal {
@@ -170,30 +173,17 @@ contract NFT_FWT is ERC721, Ownable {
     return uriPrefix;
   }
 
-//  function _beforeTokenTransfer(
-//         address from,
-//         address to,
-//         uint256 tokenId
-//     ) internal virtual override {
-//         super._beforeTokenTransfer(from, to, tokenId);
-
-//             if(from == address(0)){
-//                 _addNftToIndex(tokenId);
-//             }
-//         }
-
   function _addNftToIndex(uint256 _tokenId) internal {
         nft[_tokenId] = NFT(0 , 0, block.timestamp);
 
     emit NFTCreated(_tokenId, block.timestamp);
   }
 
-  function checkTokenDue(uint256 _tokenId) public view returns (bool) {
-    require(_exists(_tokenId), "NFT not exists yet");
+  function checkTokenMatured(uint256 _tokenId) public view checkToken(_tokenId) returns (bool) {
     bool inDue;
     uint256 time = block.timestamp;
-    NFT storage nfts = nft[_tokenId]
-    if(time >= nft[_tokenId].timeIssued + 20){
+    NFT storage nfts = nft[_tokenId];
+    if(time >= nfts.timeIssued + 20){
     inDue = true; } else {inDue = false;}
     return inDue;
   }
@@ -201,25 +191,25 @@ contract NFT_FWT is ERC721, Ownable {
   function calculateRewardDistribution() public view returns (uint256) {
     uint256 totalNftDue;
     uint256 current = totalSupply();
-    for (uint i = 1; i < current; i++) {
-      if (checkTokenDue(i) == true) {
-        totalNftDue += i;
+    for (uint i = 1; i <= current; i++) {
+      if (checkTokenMatured(i) == true) {
+        totalNftDue += 1;
       }
     }
          return totalNftDue;
   }
 
-  function distributeReward(uint256 _amount) public onlyOwner {
-    //   IERC20 token = IERC20(txToken);
+  function distributeReward(address _owner, uint256 _amount) public onlyOwner {
+      IERC20 token = IERC20(txToken);
       
       uint256 currentSupply = totalSupply();
       uint256 _reward = _amount / calculateRewardDistribution();
       uint256 time = block.timestamp;
       
-      for(uint256 i = 1; i < currentSupply; i++){
+      for(uint256 i = 1; i <= currentSupply; i++){
         _distributeRewardPerToken(time, i, _reward);
       }
-    //   token.transferFrom(owner(), address(this), _amount);
+      token.transferFrom(_owner, address(this), _amount);
   }
 
   function _distributeRewardPerToken(uint256 _time, uint256 _tokenId, uint256 _reward) internal {
@@ -233,9 +223,8 @@ contract NFT_FWT is ERC721, Ownable {
       require(balanceOf(msg.sender) > 0, "You're not a holder");
       uint256 yourReward;
       uint256 current = totalSupply();      
-      // uint256 index;
 
-      for(uint256 i = 1; i < current; i++) {
+      for(uint256 i = 1; i <= current; i++) {
         address ownerToken = ownerOf(i);
           if(ownerToken == msg.sender) {
             yourReward += nft[i].pendingReward;
@@ -243,18 +232,20 @@ contract NFT_FWT is ERC721, Ownable {
     return yourReward;
   }
 
-  function claim() external {
+  function claimReward() external nonReentrant() {
+      IERC20 token = IERC20(txToken);
+
       require(balanceOf(msg.sender) > 0, "Not a holder");
       uint256 rewardAmount;
       uint256 current = totalSupply();
-        for(uint i = 1; i < current; i++) {
+        for(uint i = 1; i <= current; i++) {
           rewardAmount += nft[i].pendingReward;
            _claimRewardPerNft(msg.sender, i);
         }
         totalRewardReleased += rewardAmount;
         TotalRewardReleasedPerAddress[msg.sender] += rewardAmount;
 
-    // token.transfer(msg.sender, payment);
+    token.transfer(msg.sender, rewardAmount);
 
     emit RewardClaim(msg.sender, rewardAmount, totalRewardReleased);
     }
@@ -275,11 +266,19 @@ contract NFT_FWT is ERC721, Ownable {
         return walletOfOwner(msg.sender);
     }
 
-    // function viewNftDataPerId(uint256 id) public view returns (uint256 tokenid, uint256 reward, uint256 total, address holder) {
-    //   return nft[id - 1]
-    // }
-
     function transfer(address to, uint256 id) public {
       _transfer(msg.sender, to, id);
+    }
+
+    function checkRewardPerTokenHold(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256) {
+      return nft[_tokenId].pendingReward;
+    }
+
+    function viewTotalRewardDistributePerNft(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256) {
+      return nft[_tokenId].rewardReleased;
+    }
+
+    function checkIfNftAreMatured(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256) {
+      return block.timestamp - nft[_tokenId].timeIssued;
     }
 }
