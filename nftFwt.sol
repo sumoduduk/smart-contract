@@ -14,7 +14,7 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
   using Counters for Counters.Counter;
 
   event NFTCreated (uint256 tokenId, uint256 timeCreated);
-  event RewardDistributed (uint256 tokenId, uint256 time, uint256 reward);
+  event RewardDistributed (uint256 tokenId, uint256 reward);
   event RewardClaimPerNFT (address claimer, uint256 tokenId, uint256 reward);
   event RewardClaim (address claimer, uint256 rewardAmount, uint256 totalReward);
 
@@ -38,6 +38,7 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
 
   bool public paused = false;
   bool public revealed = false;
+  bool public rewardTime = false;
 
   mapping(uint256 => NFT) nft;
   mapping(address => uint256) public TotalRewardReleasedPerAddress;
@@ -131,6 +132,10 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
     revealed = _state;
   }
 
+  function toggleRewardTime(bool _state) public onlyOwner {
+    rewardTime = _state;
+  }
+
   function setCost(uint256 _cost) public onlyOwner {
     cost = _cost;
   }
@@ -192,7 +197,7 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
     uint256 totalNftDue;
     uint256 current = totalSupply();
     for (uint i = 1; i <= current; i++) {
-      if (checkTokenMatured(i) == true) {
+      if (checkIfNftAreMatured(i) > 0) {
         totalNftDue += 1;
       }
     }
@@ -204,22 +209,21 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
       
       uint256 currentSupply = totalSupply();
       uint256 _reward = _amount / calculateRewardDistribution();
-      uint256 time = block.timestamp;
       
       for(uint256 i = 1; i <= currentSupply; i++){
-        _distributeRewardPerToken(time, i, _reward);
+        _distributeRewardPerToken(i, _reward);
       }
       token.transferFrom(_owner, address(this), _amount);
   }
 
-  function _distributeRewardPerToken(uint256 _time, uint256 _tokenId, uint256 _reward) internal {
-    if (_time >= nft[_tokenId].timeIssued + 20) {
+  function _distributeRewardPerToken(uint256 _tokenId, uint256 _reward) internal {
+    if (checkIfNftAreMatured(_tokenId) > 0) {
     nft[_tokenId].pendingReward += _reward;
     }
-    emit RewardDistributed(_tokenId, _reward, _time);
+    emit RewardDistributed(_tokenId, _reward);
   }
 
-  function viewYourReward() external view returns(uint256) {
+  function viewYourReward() public view returns (uint256) {
       require(balanceOf(msg.sender) > 0, "You're not a holder");
       uint256 yourReward;
       uint256 current = totalSupply();      
@@ -233,15 +237,18 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
   }
 
   function claimReward() external nonReentrant() {
+    require(rewardTime == true);
       IERC20 token = IERC20(txToken);
 
       require(balanceOf(msg.sender) > 0, "Not a holder");
       uint256 rewardAmount;
       uint256 current = totalSupply();
         for(uint i = 1; i <= current; i++) {
+          address holder = ownerOf(i);
+          if(holder == msg.sender){
           rewardAmount += nft[i].pendingReward;
            _claimRewardPerNft(msg.sender, i);
-        }
+        }}
         totalRewardReleased += rewardAmount;
         TotalRewardReleasedPerAddress[msg.sender] += rewardAmount;
 
@@ -255,19 +262,20 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
       uint256 reward;
       if (holderToken == _holder){
         reward += nft[_tokenId].pendingReward;
-        nft[_tokenId].rewardReleased = nft[_tokenId].pendingReward;
+        nft[_tokenId].rewardReleased += nft[_tokenId].pendingReward;
         nft[_tokenId].pendingReward = 0;
       }
 
       emit RewardClaimPerNFT(_holder, _tokenId, reward);
     }
 
-    function yourCollection() external view returns(uint256[] memory) {
+    function yourCollection() public view returns(uint256[] memory) {
         return walletOfOwner(msg.sender);
     }
 
     function transfer(address to, uint256 id) public {
-      _transfer(msg.sender, to, id);
+      bytes memory data = "";
+      _safeTransfer(msg.sender, to, id, data);
     }
 
     function checkRewardPerTokenHold(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256) {
@@ -279,6 +287,13 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
     }
 
     function checkIfNftAreMatured(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256) {
-      return block.timestamp - nft[_tokenId].timeIssued;
+     uint256 time;
+     uint256 timeNow = block.timestamp;
+     if(timeNow < (nft[_tokenId].timeIssued + 20)) {
+       time = 0;
+     } else {
+       time = timeNow - (nft[_tokenId].timeIssued + 20);
+     }
+     return time;
     }
 }
