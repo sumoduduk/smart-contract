@@ -14,7 +14,7 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
   using Counters for Counters.Counter;
 
   event NFTCreated (uint256 tokenId, uint256 timeCreated);
-  event RewardDistributed (uint256 tokenId, uint256 time, uint256 reward);
+  event RewardDistributed (uint256 tokenId, uint256 reward);
   event RewardClaimPerNFT (address claimer, uint256 tokenId, uint256 reward);
   event RewardClaim (address claimer, uint256 rewardAmount, uint256 totalReward);
 
@@ -33,20 +33,21 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
   
   uint256 public totalRewardReleased;
   uint256 public cost = 0.1 ether;
-  uint256 public maxSupply = 20;
+  uint256 public maxSupply = 100;
   uint256 public maxMintAmountPerTx = 20;
 
   bool public paused = false;
   bool public revealed = false;
+  bool public rewardTime = false;
 
   mapping(uint256 => NFT) nft;
   mapping(address => uint256) public TotalRewardReleasedPerAddress;
 
   address public txToken;
 
-  constructor(address _txToken) ERC721("Final Waste Technology", "FWT") {
+  constructor() ERC721("Final Waste Technology", "FWT") {
     setHiddenMetadataUri("ipfs://__CID__/hidden.json");
-    txToken = _txToken;
+    // txToken = _txToken;
   }
 
   modifier mintCompliance(uint256 _mintAmount) {
@@ -70,7 +71,7 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
 
   function mint(uint256 _mintAmount) public payable mintCompliance(_mintAmount) {
     require(!paused, "The contract is paused!");
-    require(msg.value >= cost * _mintAmount, "Insufficient funds!");
+    // require(msg.value >= cost * _mintAmount, "Insufficient funds!");
 
     _mintLoop(msg.sender, _mintAmount);
   }
@@ -131,6 +132,10 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
     revealed = _state;
   }
 
+  function toggleRewardTime(bool _state) public onlyOwner {
+    rewardTime = _state;
+  }
+
   function setCost(uint256 _cost) public onlyOwner {
     cost = _cost;
   }
@@ -179,74 +184,66 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
     emit NFTCreated(_tokenId, block.timestamp);
   }
 
-  function checkTokenMatured(uint256 _tokenId) public view checkToken(_tokenId) returns (bool) {
-    bool inDue;
-    uint256 time = block.timestamp;
-    NFT storage nfts = nft[_tokenId];
-    if(time >= nfts.timeIssued + 20){
-    inDue = true; } else {inDue = false;}
-    return inDue;
-  }
-
   function calculateRewardDistribution() public view returns (uint256) {
     uint256 totalNftDue;
     uint256 current = totalSupply();
-    for (uint i = current; i >= 1; i --) {
-      if (checkTokenMatured(i) == true) {
+    for (uint i = current; i > 0; i--) {
+      if (checkIfNftAreMatured(i) > 0) {
         totalNftDue += 1;
       }
     }
          return totalNftDue;
   }
 
-  function distributeReward(address _owner, uint256 _amount) public onlyOwner {
-      IERC20 token = IERC20(txToken);
+  function distributeReward(uint256 _amount) public onlyOwner {
+      // IERC20 token = IERC20(txToken);
       
       uint256 currentSupply = totalSupply();
       uint256 _reward = _amount / calculateRewardDistribution();
-      uint256 time = block.timestamp;
       
-      for(uint256 i = currentSupply; i >= 1; i--){
-        _distributeRewardPerToken(time, i, _reward);
+      for (uint i = currentSupply; i >= 1; i--){
+        _distributeRewardPerToken(i, _reward);
       }
-      token.transferFrom(_owner, address(this), _amount);
+      // token.transferFrom(_owner, address(this), _amount);
   }
 
-  function _distributeRewardPerToken(uint256 _time, uint256 _tokenId, uint256 _reward) internal {
-    if (_time >= nft[_tokenId].timeIssued + 20) {
+  function _distributeRewardPerToken(uint256 _tokenId, uint256 _reward) internal {
+    if (checkIfNftAreMatured(_tokenId) > 0) {
     nft[_tokenId].pendingReward += _reward;
     }
-    emit RewardDistributed(_tokenId, _reward, _time);
+    emit RewardDistributed(_tokenId, _reward);
   }
 
-  function viewYourReward() external view returns(uint256) {
+  function viewYourReward() public view returns (uint256) {
       require(balanceOf(msg.sender) > 0, "You're not a holder");
       uint256 yourReward;
-      uint256 current = balanceOf(msg.sender);      
+      uint256 balance = totalSupply();      
 
-      for(uint256 i = 1; i <= current; i++) {
+      for(uint256 i = balance; i > 0; i--) {
         address ownerToken = ownerOf(i);
           if(ownerToken == msg.sender) {
             yourReward += nft[i].pendingReward;
-      } else continue;
+        }
       }
     return yourReward;
   }
 
+
   function claimReward() external nonReentrant() {
-      IERC20 token = IERC20(txToken);
+    require(rewardTime == true);
+      // IERC20 token = IERC20(txToken);
 
       require(balanceOf(msg.sender) > 0, "Not a holder");
-      uint256 rewardAmount;
       uint256 current = totalSupply();
-        for(uint i = 1; i <= current; i++) {
-          rewardAmount += nft[i].pendingReward;
+      uint256 rewardAmount = viewYourReward();
+
+        for(uint i = current; i > 0; i--) {
            _claimRewardPerNft(msg.sender, i);
         }
         totalRewardReleased += rewardAmount;
         TotalRewardReleasedPerAddress[msg.sender] += rewardAmount;
 
-    token.transfer(msg.sender, rewardAmount);
+    // token.transfer(msg.sender, rewardAmount);
 
     emit RewardClaim(msg.sender, rewardAmount, totalRewardReleased);
     }
@@ -256,30 +253,33 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
       uint256 reward;
       if (holderToken == _holder){
         reward += nft[_tokenId].pendingReward;
-        nft[_tokenId].rewardReleased = nft[_tokenId].pendingReward;
+        nft[_tokenId].rewardReleased += nft[_tokenId].pendingReward;
         nft[_tokenId].pendingReward = 0;
       }
 
       emit RewardClaimPerNFT(_holder, _tokenId, reward);
     }
 
-    function yourCollection() external view returns(uint256[] memory) {
+    function yourCollection() public view returns(uint256[] memory) {
         return walletOfOwner(msg.sender);
     }
 
     function transfer(address to, uint256 id) public {
-      _transfer(msg.sender, to, id);
+      bytes memory data = "";
+      _safeTransfer(msg.sender, to, id, data);
     }
 
     function checkRewardPerTokenHold(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256) {
       return nft[_tokenId].pendingReward;
     }
 
-    function viewTotalRewardDistributePerNft(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256) {
+    function viewTotalRewardDistributedPerNft(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256) {
       return nft[_tokenId].rewardReleased;
     }
 
     function checkIfNftAreMatured(uint256 _tokenId) public view checkToken(_tokenId) returns (uint256) {
-      return block.timestamp - nft[_tokenId].timeIssued;
+     uint256 time;
+     uint256 timeNow = block.timestamp;
+     return timeNow < (nft[_tokenId].timeIssued + 20) ? time = 0 : time = timeNow - (nft[_tokenId].timeIssued + 20);
     }
 }
