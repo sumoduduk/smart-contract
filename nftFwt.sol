@@ -191,7 +191,7 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
   function calculateRewardDistribution() public view returns (uint256) {
     uint256 totalNftDue;
     uint256 current = totalSupply();
-    for (uint i = 1; i <= current; i++) {
+    for (uint i = current; i >= 1; i --) {
       if (checkTokenMatured(i) == true) {
         totalNftDue += 1;
       }
@@ -206,7 +206,7 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
       uint256 _reward = _amount / calculateRewardDistribution();
       uint256 time = block.timestamp;
       
-      for(uint256 i = 1; i <= currentSupply; i++){
+      for(uint256 i = currentSupply; i >= 1; i--){
         _distributeRewardPerToken(time, i, _reward);
       }
       token.transferFrom(_owner, address(this), _amount);
@@ -222,13 +222,14 @@ contract NFT_FWT is ERC721, Ownable, ReentrancyGuard {
   function viewYourReward() external view returns(uint256) {
       require(balanceOf(msg.sender) > 0, "You're not a holder");
       uint256 yourReward;
-      uint256 current = totalSupply();      
+      uint256 current = balanceOf(msg.sender);      
 
       for(uint256 i = 1; i <= current; i++) {
         address ownerToken = ownerOf(i);
           if(ownerToken == msg.sender) {
             yourReward += nft[i].pendingReward;
-      }}
+      } else continue;
+      }
     return yourReward;
   }
 
