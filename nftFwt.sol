@@ -1814,12 +1814,15 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
     function getAllNftDataOwned(address _holder) public view returns (NFT[] memory) {
         uint256 total = totalSupply();
         uint256 balances = balanceOf(_holder);
+        uint256 j = 0;
         NFT[] memory nfts = new NFT[](balances);
         for(uint i = total; i > 0; i--){
             NFT storage _nft = nft[i];
             address holder = ownerOf(i);
             if(holder == _holder) {
-             nfts[i-1] = _nft;
+                while(j < balances)
+             nfts[j] = _nft;
+             j++;
             }
         }
         return nfts;
