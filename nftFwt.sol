@@ -1727,7 +1727,7 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
      return timeNow < (nft[_tokenId].timeIssued + 20) ? time = 0 : time = timeNow - (nft[_tokenId].timeIssued + 20);
     }
 
-    function viewAllNFTIdthatWithReward(address _owner)
+    function viewAllNFTIdWithReward(address _owner)
     public
     view
     returns (uint256[] memory)
@@ -1755,22 +1755,21 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
   {
     uint256 tokenWithReward = totalNFTthatHaveReward();
     uint256 currentSupply = totalSupply();
+    uint256 j = 0;
     NFT[] memory nfts = new NFT[](tokenWithReward);
     for(uint256 i = currentSupply; i > 0; i--){
         NFT storage _nft = nft[i];
-        if(nft[i].pendingReward > 0){
-           nfts[i-1] = _nft; 
+        if(_nft.pendingReward > 0){
+            while(j <= currentSupply){
+                nfts[j] = _nft;
+                j++;
+            }
+           
         }
       }
     return nfts;
   }
   
-   function viewAllYourNFTIdthatWithReward()
-    public
-    view
-    returns (uint256[] memory) {
-      return viewAllNFTIdthatWithReward(msg.sender);
-    }
 
     function totalNFTthatHaveReward() public view returns (uint256) {
       uint256 total;
@@ -1797,10 +1796,6 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
       return total;
     }
 
-    function totalNFTOwnedthatHaveReward() public view returns (uint256) {
-      return totalNFTThatHaveRewardPerAddress(msg.sender);
-    }
-
     function getAllNftData() public view returns (NFT[] memory) {
         uint256 total = totalSupply();
         NFT[] memory nfts = new NFT[](total);
@@ -1820,29 +1815,14 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
             NFT storage _nft = nft[i];
             address holder = ownerOf(i);
             if(holder == _holder) {
-                while(j < balances)
+                while(j < balances){
              nfts[j] = _nft;
-             j++;
+             j++;}
             }
         }
         return nfts;
     }
 
-    function getAllNFOwnedWithReward() public
-    view
-    returns (NFT[] memory) {
-        require(balanceOf(msg.sender) > 0);
-        uint256 totalOwned = totalNFTThatHaveRewardPerAddress(msg.sender);
-        uint256 total = totalSupply();
-        NFT[] memory nfts = new NFT[](totalOwned);
-        for(uint i = total; i > 0; i--){
-            NFT storage _nft = nft[i];
-            address holder = ownerOf(i);
-            if(holder == msg.sender){
-            nfts[i-1] =_nft;
-            }
-        }return nfts;
-    }
 
     function getAllNFWithRewardByAddress(address _holder) public
     view
@@ -1850,12 +1830,20 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
         require(totalNFTThatHaveRewardPerAddress(_holder) > 0, "YDHR");
         uint256 totalOwned = totalNFTThatHaveRewardPerAddress(_holder);
         uint256 total = totalSupply();
+        uint256 balances = balanceOf(_holder);
+        uint256 j = 0;
         NFT[] memory nfts = new NFT[](totalOwned);
         for(uint i = total; i > 0; i--){
             NFT storage _nft = nft[i];
             address holder = ownerOf(i);
             if(holder == _holder){
-            nfts[i-1] =_nft;
+                if(_nft.pendingReward > 0){
+                    while(j < balances) {
+                         nfts[j] =_nft;
+                         j++;
+                    }
+                }
+           
             }
         }return nfts;
     }
