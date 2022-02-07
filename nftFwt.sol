@@ -1397,14 +1397,15 @@ pragma solidity >=0.7.0 <0.9.0;
 
 
 
-contract NFTtest is ERC721, Ownable, ReentrancyGuard {
+contract Feathers is ERC721, Ownable, ReentrancyGuard {
   using Strings for uint256;
   using Counters for Counters.Counter;
 
+  event stableCoinlist (address ERC20);
   event NFTCreated (uint256 tokenId, uint256 timeCreated);
   event RewardDistributed (uint256 tokenId, uint256 reward);
-  event RewardClaimPerNFT (address claimer, uint256 tokenId, uint256 reward);
-  event RewardClaim (IERC20 indexed token, address claimer, uint256 rewardAmount, uint256 totalReward);
+  event RewardClaimPerNFT (address claimer, uint256 tokenId, uint256 totalRewardReleasedPerNFT);
+  event RewardClaim (address claimer, uint256 rewardAmount, uint256 totalRewardReleased);
 
     struct NFT {
 
@@ -1417,26 +1418,26 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
   Counters.Counter private supply;
 
   string public uriPrefix = "";
-  string public uriSuffix = ".json";
+  string public uriSuffix = "";
   string public hiddenMetadataUri;
   
   uint256 public cost = 0.001 ether;
   uint256 public maxSupply = 500;
   uint256 public maxMintAmountPerTx = 20;
+  uint256 totalRewardReleased;
 
   bool public paused = false;
   bool public rewardTime = false;
 
-  mapping(IERC20 => mapping(address => uint256)) public TotalRewardReleasedPerAddress;
-  mapping(IERC20 => uint256) public totalRewardReleased;
-  mapping(uint256 => NFT) public nft;
+  mapping(address => uint256) public TotalRewardReleasedPerAddress;
+  mapping(uint256 => NFT) nft;
   mapping(uint256 => bool) revealed;
   mapping(address => NFT) asset;
 
   address public txToken;
 
-  constructor() ERC721("NFT test", "FTST") {
-    setHiddenMetadataUri("ipfs://__CID__/hidden.json");
+  constructor() ERC721("NFT test2", "FTSQ") {
+    setHiddenMetadataUri("https://storage.shinyobjects.gg/feathers/metadata/1");
   }
 
   modifier mintCompliance(uint256 _mintAmount) {
@@ -1504,7 +1505,7 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
   {
     require(
       _exists(_tokenId),
-      "ERC721Metadata: URI query for nonexistent token"
+      "nonexistent token"
     );
 
     if (revealed[_tokenId] == false) {
@@ -1545,8 +1546,10 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
     paused = _state;
   }
 
-  function setCoin(address _txToken) public onlyOwner {
+  function setERC20(address _txToken) public onlyOwner {
     txToken = _txToken;
+
+    emit stableCoinlist (_txToken);
   }
 
   function withdraw() public onlyOwner {
@@ -1619,6 +1622,40 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
     return yourReward;
   }
 
+  function viewPendingRewardPerAddress(address _holder) public view returns (uint256) {
+      require(balanceOf(_holder) > 0, "You're not a holder");
+      uint256 yourReward;
+      uint256 balance = totalSupply();      
+
+      for(uint256 i = balance; i > 0; i--) {
+        address ownerToken = ownerOf(i);
+          if(ownerToken == _holder) {
+            yourReward += nft[i].pendingReward;
+        }
+      }
+    return yourReward;
+  }
+
+    function claimRewardPerAddress(address _holder) external nonReentrant() {
+    require(totalNFTThatHaveRewardPerAddress(_holder) > 0, "YDHR");
+    require(rewardTime == true);
+    require(balanceOf(_holder) > 0, "Not a holder");
+
+      IERC20 token = IERC20(txToken);
+
+      uint256 current = totalSupply();
+      uint256 rewardAmount = viewPendingRewardPerAddress(_holder);
+
+        for(uint i = current; i > 0; i--) {
+           _claimRewardPerNft(_holder, i);
+        }
+        totalRewardReleased += rewardAmount;
+        TotalRewardReleasedPerAddress[_holder] += rewardAmount;
+
+    token.transfer(_holder, rewardAmount);
+
+    emit RewardClaim(_holder, rewardAmount, totalRewardReleased);
+    }
 
   function claimReward() external nonReentrant() {
     require(rewardTime == true);
@@ -1631,15 +1668,16 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
         for(uint i = current; i > 0; i--) {
            _claimRewardPerNft(msg.sender, i);
         }
-        totalRewardReleased[token] += rewardAmount;
-        TotalRewardReleasedPerAddress[token][msg.sender] += rewardAmount;
+        totalRewardReleased += rewardAmount;
+        TotalRewardReleasedPerAddress[msg.sender] += rewardAmount;
 
     token.transfer(msg.sender, rewardAmount);
 
-    emit RewardClaim(token, msg.sender, rewardAmount, totalRewardReleased[token]);
+    emit RewardClaim(msg.sender, rewardAmount, totalRewardReleased);
     }
 
     function _claimRewardPerNft(address _holder, uint256 _tokenId) internal {
+    require(_holder == ownerOf(_tokenId));
       address holderToken = ownerOf(_tokenId);
       uint256 reward;
       if (holderToken == _holder){
@@ -1653,12 +1691,17 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
 
     function claimRewardPerNft(uint256 _tokenId) public checkToken(_tokenId) {
       require(rewardTime == true );
+      require(nft[_tokenId].pendingReward > 0);
+
       IERC20 token = IERC20(txToken);
+
       uint256 reward = nft[_tokenId].pendingReward;
       _claimRewardPerNft(msg.sender, _tokenId);
-        totalRewardReleased[token] += reward;
-        TotalRewardReleasedPerAddress[token][msg.sender] += reward;
+        totalRewardReleased += reward;
+        TotalRewardReleasedPerAddress[msg.sender] += reward;
       token.transfer(msg.sender, reward);
+
+      emit RewardClaim(msg.sender, reward, totalRewardReleased);
     }
 
     function yourCollection() public view returns(uint256[] memory) {
@@ -1684,7 +1727,7 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
      return timeNow < (nft[_tokenId].timeIssued + 20) ? time = 0 : time = timeNow - (nft[_tokenId].timeIssued + 20);
     }
 
-    function viewAllNFTIdthatWithReward(address _owner)
+    function viewAllNFTIdWithReward(address _owner)
     public
     view
     returns (uint256[] memory)
@@ -1711,23 +1754,23 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
     returns (NFT[] memory)
   {
     uint256 tokenWithReward = totalNFTthatHaveReward();
-    uint256 currentSupply = totalSupply();
+    uint256 total = totalSupply();
+    uint256 tokenId = 1;
+    uint256 index = 0;
     NFT[] memory nfts = new NFT[](tokenWithReward);
-    for(uint256 i = currentSupply; i > 0; i--){
-        NFT storage _nft = nft[i];
-        if(nft[i].pendingReward > 0){
-           nfts[i] = _nft; 
+     
+        while (index < tokenWithReward && tokenId <= total) {
+        if (nft[tokenId].pendingReward > 0) {
+        nfts[index] = nft[tokenId];
+
+        index++;
         }
-      }
-    return nfts;
-  }
-  
-   function viewAllYourNFTIdthatWithReward()
-    public
-    view
-    returns (uint256[] memory) {
-      return viewAllNFTIdthatWithReward(msg.sender);
+
+        tokenId++;
+        }
+        return nfts;
     }
+  
 
     function totalNFTthatHaveReward() public view returns (uint256) {
       uint256 total;
@@ -1754,34 +1797,60 @@ contract NFTtest is ERC721, Ownable, ReentrancyGuard {
       return total;
     }
 
-    function totalNFTOwnedthatHaveReward() public view returns (uint256) {
-      return totalNFTThatHaveRewardPerAddress(msg.sender);
-    }
-
     function getAllNftData() public view returns (NFT[] memory) {
         uint256 total = totalSupply();
         NFT[] memory nfts = new NFT[](total);
         for(uint i = total; i > 0; i--){
             NFT storage _nft = nft[i];
-            nfts[i] = _nft;
+            nfts[i-1] = _nft;
         }
         return nfts;
     }
 
-    function getAllNFOwnedTWithReward() public
+    function getAllNftDataOwned(address _holder) public view returns (NFT[] memory) {
+        uint256 total = totalSupply();
+        uint256 balances = balanceOf(_holder);
+        NFT[] memory nfts = new NFT[](balances);
+        uint256 tokenId = 1;
+        uint256 index = 0;
+        while (index < balances && tokenId <= total) {
+        address holder = ownerOf(tokenId);
+
+        if (holder == _holder) {
+        nfts[index] = nft[tokenId];
+
+        index++;
+        }
+
+        tokenId++;
+        }
+        return nfts;
+    }
+
+
+
+    function getAllNFWithRewardByAddress(address _holder) public
     view
     returns (NFT[] memory) {
-        require(balanceOf(msg.sender) > 0);
-        uint256 totalOwned = totalNFTThatHaveRewardPerAddress(msg.sender);
+        uint256 totalOwned = totalNFTThatHaveRewardPerAddress(_holder);
         uint256 total = totalSupply();
+        uint256 balances = balanceOf(_holder);
         NFT[] memory nfts = new NFT[](totalOwned);
-        for(uint i = total; i > 0; i--){
-            NFT storage _nft = nft[i];
-            address holder = ownerOf(i);
-            if(holder == msg.sender){
-            nfts[i] =_nft;
-            }
-        }return nfts;
+        uint256 tokenId = 1;
+        uint256 index = 0;
+        while (index < balances && tokenId <= total) {
+        address holder = ownerOf(tokenId);
+
+        if (holder == _holder && nft[tokenId].pendingReward > 0) {
+
+        nfts[index] = nft[tokenId];
+
+        index++;
+        }
+
+        tokenId++;
+        }
+        return nfts;
     }
 
 }
