@@ -1,4 +1,8 @@
 /**
+ *Submitted for verification at Etherscan.io on 2022-02-07
+*/
+
+/**
  *Submitted for verification at Etherscan.io on 2022-01-21
 */
 
@@ -1402,10 +1406,11 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
   using Counters for Counters.Counter;
 
   event stableCoinlist (address ERC20);
-  event NFTCreated (uint256 tokenId, uint256 timeCreated);
-  event RewardDistributed (uint256 tokenId, uint256 reward);
-  event RewardClaimPerNFT (address claimer, uint256 tokenId, uint256 totalRewardReleasedPerNFT);
-  event RewardClaim (address claimer, uint256 rewardAmount, uint256 totalRewardReleased);
+  event NFTCreated (uint256 indexed tokenId, uint256 indexed timeCreated);
+  event RewardDistributed (uint256 indexed tokenId, uint256 reward, uint256 indexed time);
+  event RewardClaimPerNFT (address indexed claimer, uint256 indexed tokenId, uint256 indexed time, uint256 amount);
+  event RewardClaim (address indexed claimer, uint256 indexed time, uint256 amount);
+  
 
     struct NFT {
 
@@ -1427,7 +1432,7 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
   uint256 totalRewardReleased;
 
   bool public paused = false;
-  bool public rewardTime = false;
+  bool public rewardTime = true;
 
   mapping(address => uint256) public TotalRewardReleasedPerAddress;
   mapping(uint256 => NFT) nft;
@@ -1438,6 +1443,8 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
 
   constructor() ERC721("NFT test2", "FTSQ") {
     setHiddenMetadataUri("https://storage.shinyobjects.gg/feathers/metadata/1");
+    setUriPrefix("https://storage.shinyobjects.gg/feathers/metadata/");
+    setERC20(0x40550a8364e6D76459AFABcf7a0d150780920569);
   }
 
   modifier mintCompliance(uint256 _mintAmount) {
@@ -1514,7 +1521,7 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
 
     string memory currentBaseURI = _baseURI();
     return bytes(currentBaseURI).length > 0
-        ? string(abi.encodePacked(currentBaseURI, _tokenId.toString(), uriSuffix))
+        ? string(abi.encodePacked(currentBaseURI, _tokenId.toString()))
         : "";
   }
 
@@ -1566,6 +1573,7 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
     }
   }
 
+
   function _baseURI() internal view virtual override returns (string memory) {
     return uriPrefix;
   }
@@ -1599,13 +1607,16 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
         _distributeRewardPerToken(i, _reward);
       }
       token.transferFrom(_owner, address(this), _amount);
+
+      
   }
+
 
   function _distributeRewardPerToken(uint256 _tokenId, uint256 _reward) internal {
     if (checkIfNftAreMatured(_tokenId) > 0) {
     nft[_tokenId].pendingReward += _reward;
     }
-    emit RewardDistributed(_tokenId, _reward);
+    emit RewardDistributed(_tokenId, _reward, block.timestamp);
   }
 
   function viewYourReward() public view returns (uint256) {
@@ -1637,9 +1648,9 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
   }
 
     function claimRewardPerAddress(address _holder) external nonReentrant() {
-    require(totalNFTThatHaveRewardPerAddress(_holder) > 0, "YDHR");
-    require(rewardTime == true);
-    require(balanceOf(_holder) > 0, "Not a holder");
+        require(totalNFTThatHaveRewardPerAddress(_holder) > 0, "YDHR");
+        require(rewardTime == true);
+        require(balanceOf(_holder) > 0, "Not a holder");
 
       IERC20 token = IERC20(txToken);
 
@@ -1647,14 +1658,18 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
       uint256 rewardAmount = viewPendingRewardPerAddress(_holder);
 
         for(uint i = current; i > 0; i--) {
-           _claimRewardPerNft(_holder, i);
+            address holder = ownerOf(i);
+            if(holder == _holder) {
+            _claimRewardPerNft(_holder, i);
+            }
+           
         }
         totalRewardReleased += rewardAmount;
         TotalRewardReleasedPerAddress[_holder] += rewardAmount;
 
     token.transfer(_holder, rewardAmount);
+    emit RewardClaim(_holder, block.timestamp, rewardAmount);
 
-    emit RewardClaim(_holder, rewardAmount, totalRewardReleased);
     }
 
   function claimReward() external nonReentrant() {
@@ -1666,17 +1681,21 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
       uint256 rewardAmount = viewYourReward();
 
         for(uint i = current; i > 0; i--) {
-           _claimRewardPerNft(msg.sender, i);
+           address holder = ownerOf(i);
+            if(holder == msg.sender) {
+            _claimRewardPerNft(msg.sender, i);
+            }
         }
         totalRewardReleased += rewardAmount;
         TotalRewardReleasedPerAddress[msg.sender] += rewardAmount;
 
     token.transfer(msg.sender, rewardAmount);
 
-    emit RewardClaim(msg.sender, rewardAmount, totalRewardReleased);
+    emit RewardClaim(msg.sender, block.timestamp, rewardAmount);
+
     }
 
-    function _claimRewardPerNft(address _holder, uint256 _tokenId) internal {
+    function _claimRewardPerNft(address _holder, uint256 _tokenId) private {
     require(_holder == ownerOf(_tokenId));
       address holderToken = ownerOf(_tokenId);
       uint256 reward;
@@ -1686,10 +1705,10 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
         nft[_tokenId].pendingReward = 0;
       }
 
-      emit RewardClaimPerNFT(_holder, _tokenId, reward);
+      emit RewardClaimPerNFT(_holder, _tokenId, block.timestamp, reward);
     }
 
-    function claimRewardPerNft(uint256 _tokenId) public checkToken(_tokenId) {
+    function claimRewardPerNft(uint256 _tokenId) external checkToken(_tokenId) nonReentrant() {
       require(rewardTime == true );
       require(nft[_tokenId].pendingReward > 0);
 
@@ -1701,7 +1720,6 @@ contract Feathers is ERC721, Ownable, ReentrancyGuard {
         TotalRewardReleasedPerAddress[msg.sender] += reward;
       token.transfer(msg.sender, reward);
 
-      emit RewardClaim(msg.sender, reward, totalRewardReleased);
     }
 
     function yourCollection() public view returns(uint256[] memory) {
