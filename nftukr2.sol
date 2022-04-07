@@ -2,10 +2,10 @@
 
 pragma solidity >=0.7.0 <0.9.0;
 
-import "../.deps/github/OpenZeppelin/openzeppelin-contracts/contracts/token/ERC721/extensions/draft-ERC721Votes.sol";
-import "../.deps/github/OpenZeppelin/openzeppelin-contracts/contracts/utils/Counters.sol";
-import "../.deps/github/OpenZeppelin/openzeppelin-contracts/contracts/access/Ownable.sol";
-import "../.deps/github/OpenZeppelin/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/draft-ERC721Votes.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 
 contract SimpleNftLowerGas is ERC721Votes, Ownable {
@@ -136,6 +136,27 @@ contract SimpleNftLowerGas is ERC721Votes, Ownable {
     paused = _state;
   }
 
+  function setFraction(uint256 _set) public onlyOwner {
+    fraction = _set;
+  }
+
+  function setErc20(address _token) public onlyOwner {
+    erc20 = _token;
+  }
+
+  function setDistri(address _account) public onlyOwner {
+    royaltyDistributor = _account;
+  }
+
+  function operationalCostFee() public onlyOwner {
+    IERC20 token = IERC20(erc20);
+
+    uint256 amount = operationalCost;
+    operationalCost = 0;
+
+    token.transfer(owner(), amount);
+  }
+
   function withdraw() public onlyOwner {
     // This will transfer the remaining contract balance to the owner.
     // Do not remove this otherwise you will not be able to withdraw the funds.
@@ -178,6 +199,7 @@ contract SimpleNftLowerGas is ERC721Votes, Ownable {
     uint256 deposited = _amount;
     uint256 pool = (fraction * deposited) / 100;
     blockMined.push(block.number);
+    operationalCost = operationalCost + (deposited - pool);
     poolBlock[block.number] = pool;
 
     // token.transferFrom(address(royaltyDistributor), address(royaltyDistributor), deposited);
@@ -220,6 +242,7 @@ contract SimpleNftLowerGas is ERC721Votes, Ownable {
     }
 
     royaltyReleased[_holder] += amount;
+    
     // token.transfer(_holder, amount);
   }
 
