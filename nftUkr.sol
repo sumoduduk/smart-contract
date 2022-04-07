@@ -214,9 +214,17 @@ contract NeverForget is ERC721Royalty, Ownable {
     secretTokenID = _tokenId;
   }
 
-  function setDefaultRoyalty(address recipient, uint96 fraction) public {
+  function setDefaultRoyalty(address recipient, uint96 fraction) public onlyOwner {
         _setDefaultRoyalty(recipient, fraction);
     }
+
+  function setTokenERC20(address _token) public onlyOwner {
+    erc20 = _token;
+  }
+
+  function setRoyaltyDistributor(address _distributor) public onlyOwner {
+    royaltyDistributor = _distributor;
+  }
 
   function withdraw() public onlyOwner {
     
@@ -270,17 +278,22 @@ contract NeverForget is ERC721Royalty, Ownable {
         nft[_tokenId] = NFT(_tokenId, block.timestamp, 0, Vote.ABSTAIN);
     }
 
-    function distributeRoyalty() public {
+    function erc20Balance() public view returns (uint256) {
       IERC20 token = IERC20(erc20);
+      return token.balanceOf(address(this));
+    }
 
-      uint256 amountReceived = token.balanceOf(royaltyDistributor) * 95 / 100;
+    function distributeRoyalty() public {
+      // IERC20 token = IERC20(erc20);
+      uint256 _balances = erc20Balance();
+      uint256 amountReceived = _balances * 95 / 100;
       uint256 amountDistributed = amountReceived / maxSupply;
       
       for(uint256 i = maxSupply; i > 0; i--){
         nft[i].royaltyToReward += amountDistributed;
       }
 
-      token.transferFrom(royaltyDistributor, address(this), amountReceived);
+      // token.transferFrom(royaltyDistributor, address(this), amountReceived);
     }
 
     function viewRoyaltybyAddress(address _holder) public view returns(uint256) {
@@ -305,6 +318,7 @@ contract NeverForget is ERC721Royalty, Ownable {
     }
 
     function claimPerNft(address _holder, uint256 _tokenId) public {
+      require(msg.sender == _holder);
       IERC20 token = IERC20(erc20);
 
       uint256 reward = _claim(_holder, _tokenId);
@@ -313,6 +327,7 @@ contract NeverForget is ERC721Royalty, Ownable {
     }
 
     function claimAll(address _holder) public {
+      require(msg.sender == _holder);
 
       IERC20 token = IERC20(erc20);
 
@@ -334,21 +349,29 @@ contract NeverForget is ERC721Royalty, Ownable {
 
     function enterProposal(string memory _proposal, address _recepient) public {
       require(isProjectKilled == false);
-      require(balanceOf(msg.sender) >= 4500 || msg.sender == ownerOf(secretTokenID));
+      require(balanceOf(msg.sender) >= 4500 || msg.sender == ownerOf(secretTokenID) || msg.sender == owner());
+      require(_recepient != address(0));
       require(stage == Stage.CollectPropasal);
       proposal = _proposal;
       donationRecepient = _recepient;
 
+       for(uint256 i = totalSupply(); i > 0; i--) {
+         if(nft[i].vote != Vote.ABSTAIN){
+           delete nft[i].vote;
+         }
+        }
+
       proposalTime = block.timestamp;
       votingTime = block.timestamp + 60;
-      countTime = block.timestamp + 85;
       countTime = block.timestamp + 90;
+      countTime = block.timestamp + 100;
 
       nextStage();
-      
+      setStage();
     }
 
     function voting(address _holder, uint _vote) external {
+      require(msg.sender == _holder);
       require(stage == Stage.VotingStart);
       require(_vote >= 0);
       if(totalSupply() != maxSupply) {
@@ -414,9 +437,6 @@ contract NeverForget is ERC721Royalty, Ownable {
         nextStage();
       }
       if(stage == Stage.VotingEnd && votingTime > countEnd) {
-        for(uint256 i = totalSupply(); i > 0; i--) {
-          delete nft[i].vote;
-        }
         nextStage();
       }
     }
