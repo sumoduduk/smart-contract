@@ -17,7 +17,7 @@ abstract contract Votes is IVotes, Context, EIP712 {
     bytes32 private constant _DELEGATION_TYPEHASH =
         keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
 
-    mapping(address => address) internal _delegation;
+    mapping(address => address) private _delegation;
     mapping(address => Checkpoints.History) private _delegateCheckpoints;
     Checkpoints.History private _totalCheckpoints;
 
@@ -68,7 +68,8 @@ abstract contract Votes is IVotes, Context, EIP712 {
      * @dev Returns the delegate that `account` has chosen.
      */
     function delegates(address account) public view virtual override returns (address) {
-        return _delegation[account];
+        address curent = _delegation[account];
+        return curent == address(0) ? account : curent;
     }
 
     /**
@@ -506,11 +507,6 @@ contract SimpleNftLowerGas is ERC721Votes, Ownable {
 
   function curentBlock() view public returns (uint256) {
     return block.number;
-  }
-
-  function delegates(address account) public view override returns (address) {
-    address curent = _delegation[account];
-    return curent == address(0) ? account : curent;
   }
 
   function delegate(address delegatee) public override onlyOwner {}

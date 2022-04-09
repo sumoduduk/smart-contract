@@ -12,6 +12,8 @@ import "@openzeppelin/contracts//token/ERC20/utils/SafeERC20.sol";
 interface INever {
     function mintAmount(address _minter) external view returns (uint256);
     function totalMinter() external view returns (uint256);
+    function totalSupply() external view returns (uint256);
+    function maximumSupply() external view returns (uint256);
 }
 
 
@@ -43,7 +45,7 @@ contract MinterShare is ERC721, Ownable, ReentrancyGuard {
   uint256 private _totalReleased;
 
   bool public paused = true;
-  bool public whitelistMintEnabled = false;
+  bool public mintEnabled = false;
 
   address interfaceAddr;
 
@@ -158,8 +160,8 @@ contract MinterShare is ERC721, Ownable, ReentrancyGuard {
     }
 
   function claimMint(bytes32[] calldata _merkleProof) public payable {
-    // Verify whitelist requirements
-    require(whitelistMintEnabled, 'The whitelist sale is not enabled!');
+    // Verify mint requirements
+    require(mintEnabled, 'The mint is not enabled!');
     require(!minterClaimed[_msgSender()], 'Address already claimed!');
     bytes32 leaf = keccak256(abi.encodePacked(_msgSender()));
     require(MerkleProof.verify(_merkleProof, merkleRoot, leaf), 'Invalid proof!');
@@ -237,8 +239,13 @@ contract MinterShare is ERC721, Ownable, ReentrancyGuard {
     merkleRoot = _merkleRoot;
   }
 
-  function setWhitelistMintEnabled(bool _state) public onlyOwner {
-    whitelistMintEnabled = _state;
+  function setMintEnabled(bool _state) public onlyOwner {
+    INever token = INever(interfaceAddr);
+
+    uint256 supplie = token.totalSupply();
+    uint256 max = token.maximumSupply();
+    require(supplie == max, 'all nft not minted yet');
+    mintEnabled = _state;
   }
 
 //   function withdraw() public onlyOwner nonReentrant {
