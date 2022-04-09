@@ -7,6 +7,14 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+interface INever is IVotes {
+function toggleProjectKilled() external;
+}
+
+interface IRoyalty {
+    function changePayee(address receiver) external;
+}
+
 contract NeverDao is Ownable {
     using Strings for uint256;
 
@@ -55,10 +63,12 @@ contract NeverDao is Ownable {
     
     address NAddress;
     address royaltyReceiver;
+    address royaltyDistributor;
 
     bool postponeProject;
 
-    constructor(address _addr) {
+    constructor(address _addr, address _addr2) {
+        royaltyDistributor = _addr2;
         NAddress = _addr;
         contractStart = block.timestamp;
     }
@@ -86,7 +96,7 @@ contract NeverDao is Ownable {
         return blocktime[last];
     }
 
-    function nextStage() internal {
+    function nextStage() private {
       stage = Stages(uint8(stage) + 1);
     }
 
@@ -162,6 +172,8 @@ contract NeverDao is Ownable {
     
     function countVote(uint256 _b) public  {
         require(!proposal[_b].end, "proposal has ended");
+        require(stage == Stages.VOTE_COUNT);
+        require(block.timestamp > voteStart[_b] + 7);
 
         uint256 yay = choice[_b].yay;
         uint256 nay = choice[_b].nay;
@@ -182,39 +194,56 @@ contract NeverDao is Ownable {
                 proposal[_b].result = Result.PROJECT_POSTPONED;
             }
         }
+
+        nextStage();
     }
 
     function execute(uint256 _b) public {
         require(proposal[_b].result != Result.PENDING);
         require(proposal[_b].end == true && proposal[_b].executed == false);
 
+        INever token = INever(NAddress);
+        IRoyalty royal = IRoyalty(royaltyDistributor);
+
         address reciever = proposal[_b].charityReceiver;
 
         if(proposal[_b].result == Result.SUCCEED) {
             postponeProject = false;
             royaltyReceiver = reciever;
-             
+            royal.changePayee(receiveCharity());
         }
+
         if(proposal[_b].result == Result.REJECTED) {
              rejected[reciever] = true;
         }
+        
         if(proposal[_b].result == Result.PROJECT_POSTPONED) {
             postponeProject = true;
             royaltyReceiver = NAddress;
+            token.toggleProjectKilled();
+            royal.changePayee(receiveCharity());
         }
     }
 
-    function propoasalID(uint256 _id) public view returns (Proposal[] memory) {
+    function propoasalId(uint256 _id) external view returns (Proposal[] memory) {
         Proposal[] memory prop = new Proposal[](1);
         Proposal storage _prop = proposal[_id];
         prop[0] = _prop;
         return prop;
     }
 
-    function choiceId(uint256 _id) public view returns (Choice[] memory) {
+    function choiceId(uint256 _id) external view returns (Choice[] memory) {
         Choice[] memory prop = new Choice[](1);
         Choice storage _prop = choice[_id];
         prop[0] = _prop;
         return prop;
+    }
+    
+    function stageProposal() public {
+        require(stage == Stages.VOTE_END);
+        uint256  b = getBlock();
+        require(block.timestamp > voteStart[b] + 30);
+
+        nextStage();
     }
 }

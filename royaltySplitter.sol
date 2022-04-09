@@ -187,14 +187,25 @@ contract PaymentSplitter is Context {
         _totalShares = _totalShares + shares_;
         emit PayeeAdded(account, shares_);
     }
+} 
+
+interface TheDAO {
+    
+    function receiveCharity() view external returns (address);
+
 }
 
-
 contract PAYMENTS is PaymentSplitter, Ownable {
-    
-    constructor (address[] memory _shareHolder, uint256[] memory _shares) PaymentSplitter(_shareHolder, _shares) payable {}
 
-    function changePayee(address _recepient) public onlyOwner {
+    address daoToken;
+    
+    constructor (address[] memory _shareHolder, uint256[] memory _shares, address  _dao) PaymentSplitter(_shareHolder, _shares) payable {
+        daoToken = _dao;
+    }
+
+    function changePayee(address _recepient) internal  {
+        TheDAO dao = TheDAO(daoToken);
+        require(dao.receiveCharity() == _recepient, "address not match");
         address payee = _payees[2];
         uint256 share = _shares[payee];
 
@@ -202,7 +213,18 @@ contract PAYMENTS is PaymentSplitter, Ownable {
         _shares[_recepient] = share;
 
         _payees[2] = _recepient;
-    }   
+    }  
+
+    function dummyChangePayee(address _recepient) public  {
+
+        address payee = _payees[2];
+        uint256 share = _shares[payee];
+
+        _shares[payee] = 0;
+        _shares[_recepient] = share;
+
+        _payees[2] = _recepient;
+    } 
 }
 
 /**
