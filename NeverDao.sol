@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 interface INever is IVotes {
-function toggleProjectKilled() external;
+    function toggleProjectKilled() external;
 }
 
 interface IRoyalty {
@@ -172,8 +172,8 @@ contract NeverDao is Ownable {
     
     function countVote(uint256 _b) public  {
         require(!proposal[_b].end, "proposal has ended");
-        require(stage == Stages.VOTE_COUNT);
-        require(block.timestamp > voteStart[_b] + 7);
+        require(stage == Stages.VOTE_PERIOD);
+        require(block.timestamp > voteStart[_b] + 10);
 
         uint256 yay = choice[_b].yay;
         uint256 nay = choice[_b].nay;
@@ -199,7 +199,7 @@ contract NeverDao is Ownable {
     }
 
     function execute(uint256 _b) public {
-        require(proposal[_b].result != Result.PENDING);
+        require(stage == Stages.VOTE_COUNT);
         require(proposal[_b].end == true && proposal[_b].executed == false);
 
         INever token = INever(NAddress);
@@ -216,13 +216,15 @@ contract NeverDao is Ownable {
         if(proposal[_b].result == Result.REJECTED) {
              rejected[reciever] = true;
         }
-        
+
         if(proposal[_b].result == Result.PROJECT_POSTPONED) {
             postponeProject = true;
             royaltyReceiver = NAddress;
             token.toggleProjectKilled();
             royal.changePayee(receiveCharity());
         }
+
+        nextStage();
     }
 
     function propoasalId(uint256 _id) external view returns (Proposal[] memory) {
@@ -242,7 +244,7 @@ contract NeverDao is Ownable {
     function stageProposal() public {
         require(stage == Stages.VOTE_END);
         uint256  b = getBlock();
-        require(block.timestamp > voteStart[b] + 30);
+        require(block.timestamp > voteStart[b] + 60 || block.timestamp > contractStart + 60);
 
         nextStage();
     }
