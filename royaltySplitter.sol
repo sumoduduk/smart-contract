@@ -28,18 +28,19 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract PaymentSplitter is Context {
     event PayeeAdded(address account, uint256 shares);
     event PaymentReleased(address to, uint256 amount);
-    event ERC20PaymentReleased(IERC20 indexed token, address to, uint256 amount);
+    event ERC20PaymentReleased(IERC20 indexed token, address indexed to, uint256 indexed amount);
     event PaymentReceived(address from, uint256 amount);
 
     uint256 private _totalShares;
     uint256 private _totalReleased;
 
-    mapping(address => uint256) internal _shares;
-    mapping(address => uint256) private _released;
+    mapping(uint256 => uint256) private _released;
+    mapping(address => uint256) private _shares;
+    
     address[] internal _payees;
 
     mapping(IERC20 => uint256) private _erc20TotalReleased;
-    mapping(IERC20 => mapping(address => uint256)) private _erc20Released;
+    mapping(IERC20 => mapping(uint256 => uint256)) private _erc20Released;
 
     /**
      * @dev Creates an instance of `PaymentSplitter` where each account in `payees` is assigned the number of shares at
@@ -102,17 +103,17 @@ contract PaymentSplitter is Context {
     /**
      * @dev Getter for the amount of Ether already released to a payee.
      */
-    function released(address account) public view returns (uint256) {
-        return _released[account];
+    function released(uint256 _index) internal view returns (uint256) {
+       return _released[_index];
     }
 
     /**
      * @dev Getter for the amount of `token` tokens already released to a payee. `token` should be the address of an
      * IERC20 contract.
      */
-    function released(IERC20 token, address account) public view returns (uint256) {
-        return _erc20Released[token][account];
-    }
+    function released(IERC20 token, uint256 _index) internal view returns (uint256) {
+        return _erc20Released[token][_index];  
+        }
 
     /**
      * @dev Getter for the address of the payee number `index`.
@@ -127,13 +128,21 @@ contract PaymentSplitter is Context {
      */
     function release(address payable account) public virtual {
         require(_shares[account] > 0, "PaymentSplitter: account has no shares");
+        uint256 total = _payees.length;
+        uint256 index;
+
+        for(uint256 i = 0; i < total; i++) {
+            if(_payees[i] == account) {
+                index = i;
+            }
+        }
 
         uint256 totalReceived = address(this).balance + totalReleased();
-        uint256 payment = _pendingPayment(account, totalReceived, released(account));
+        uint256 payment = _pendingPayment(account, totalReceived, released(index));
 
         require(payment != 0, "PaymentSplitter: account is not due payment");
 
-        _released[account] += payment;
+        _released[index] += payment;
         _totalReleased += payment;
 
         Address.sendValue(account, payment);
@@ -148,12 +157,21 @@ contract PaymentSplitter is Context {
     function release(IERC20 token, address account) public virtual {
         require(_shares[account] > 0, "PaymentSplitter: account has no shares");
 
+        uint256 total = _payees.length;
+        uint256 index;
+
+        for(uint256 i = 0; i < total; i++) {
+            if(_payees[i] == account) {
+                index = i;
+            }
+        }
+
         uint256 totalReceived = token.balanceOf(address(this)) + totalReleased(token);
-        uint256 payment = _pendingPayment(account, totalReceived, released(token, account));
+        uint256 payment = _pendingPayment(account, totalReceived, released(token, index));
 
         require(payment != 0, "PaymentSplitter: account is not due payment");
 
-        _erc20Released[token][account] += payment;
+        _erc20Released[token][index] += payment;
         _erc20TotalReleased[token] += payment;
 
         SafeERC20.safeTransfer(token, account, payment);
@@ -187,32 +205,49 @@ contract PaymentSplitter is Context {
         _totalShares = _totalShares + shares_;
         emit PayeeAdded(account, shares_);
     }
+
+    function changePayee(address _recepient, uint256 _index) internal {
+        address prevPayee = _payees[_index];
+        uint256 share = _shares[prevPayee];
+
+        _shares[_recepient] = share;
+        _shares[prevPayee] = 0;
+
+        _payees[_index] = _recepient;
+        
+    } 
+}
+
+interface INeverDao {
+     function receiveCharity() view external returns (address);
 }
 
 
 contract PAYMENTS is PaymentSplitter, Ownable {
+
+    address interfaceDao;
     
-    constructor (address[] memory _shareHolder, uint256[] memory _shares) PaymentSplitter(_shareHolder, _shares) payable {}
+    constructor (address[] memory _shareHolder, uint256[] memory _shares, address _rec) PaymentSplitter(_shareHolder, _shares) payable {
+        interfaceDao = _rec;
+    }
 
-    function changePayee(address _recepient) public onlyOwner {
-        address payee = _payees[2];
-        uint256 share = _shares[payee];
+    function changeRecepient(address _recepient) internal {
+        INeverDao dao = INeverDao(interfaceDao);
 
-        _shares[payee] = 0;
-        _shares[_recepient] = share;
+        require(dao.receiveCharity() == _recepient);
 
-        _payees[2] = _recepient;
-    }   
+        changePayee(_recepient, 2);
 }
 
-/**
- ["0x5B38Da6a701c568545dCfcB03FcB875f56beddC4", 
- "0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2",
- "0xCA35b7d915458EF540aDe6068dFe2F44E8fa733c"]
- */
+}
+
+
+//  ["0x5B38Da6a701c568545dCfcB03FcB875f56beddC4", 
+//  "0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2",
+//  "0xCA35b7d915458EF540aDe6068dFe2F44E8fa733c"]
+//  */
  
- /**
- [10, 
- 40,
- 60]
- */
+ 
+//  [10, 
+//  40,
+//  60]

@@ -216,6 +216,11 @@ abstract contract ERC721Votes is ERC721, Votes {
     }
 }
 
+interface TheDao {
+  function isProjectKilled() external view returns (bool);
+
+}
+
 contract SimpleNftLowerGas is ERC721Votes, Ownable {
   using Strings for uint256;
   using Counters for Counters.Counter;
@@ -246,9 +251,11 @@ contract SimpleNftLowerGas is ERC721Votes, Ownable {
   address public erc20;
   address public royaltyDistributor;
   address[] private minters;
+  address public theDao;
 
-  constructor() ERC721("NAME", "SYMBOL") EIP712("NAME", "1") {
+  constructor(address _dao) ERC721("NAME", "SYMBOL") EIP712("NAME", "1") {
     setHiddenMetadataUri("ipfs://__CID__/hidden.json");
+    theDao = _dao;
   }
 
   modifier mintCompliance(uint256 _mintAmount) {
@@ -415,12 +422,8 @@ contract SimpleNftLowerGas is ERC721Votes, Ownable {
   }
 
   function withdraw() public onlyOwner {
-    // This will transfer the remaining contract balance to the owner.
-    // Do not remove this otherwise you will not be able to withdraw the funds.
-    // =============================================================================
     (bool os, ) = payable(owner()).call{value: address(this).balance}("");
     require(os);
-    // =============================================================================
   }
 
   function _mintLoop(address _receiver, uint256 _mintAmount) internal {
@@ -519,5 +522,11 @@ contract SimpleNftLowerGas is ERC721Votes, Ownable {
         bytes32 r,
         bytes32 s
     ) public onlyOwner override {}
-  
-}
+
+    function toggleProjectKilled() internal {
+      TheDao dao = TheDao(theDao);
+      require(dao.isProjectKilled() == true);
+
+      isProjectKilled = !isProjectKilled;
+    }
+  }

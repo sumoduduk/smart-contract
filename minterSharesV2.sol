@@ -32,7 +32,7 @@ contract MinterShare is ERC721, Ownable, ReentrancyGuard {
 
   bytes32 public merkleRoot;
   mapping(address => bool) public minterClaimed;
-  mapping(uint256 => uint256) internal _shares;
+  mapping(uint256 => uint256) private _shares;
   mapping(uint256 => uint256) private _released;
   mapping(IERC20 => uint256) private _erc20TotalReleased;
   mapping(IERC20 => mapping(uint256 => uint256)) private _erc20Released;
